@@ -6,8 +6,7 @@ from openai import OpenAI
 app = FastAPI()
 client = OpenAI()  # reads OPENAI_API_KEY from your environment
 
-class TestModel(BaseModel):
-    name: str
+
 
 
 @app.get("/")
@@ -22,7 +21,16 @@ async def analyze_css(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Please upload a CSS file.")
 
     contents = await file.read()
-    css_text = contents.decode("utf-8")
+    
+    
+    try:
+        css_text = contents.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File must be valid UTF-8 text.")
+
+    if not css_text.strip():
+        raise HTTPException(status_code=400, detail="The CSS file is empty.")
+    
 
     analysis = analyze_with_llm(css_text)
     return analysis
@@ -48,7 +56,7 @@ class CSSAnalysis(BaseModel):
     suggestions: list[BootstrapSuggestion]
     custom_css_needed: list[str]
     
-from fastapi import HTTPException
+
 
 def analyze_with_llm(css_text: str) -> CSSAnalysis:
     try:
