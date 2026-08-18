@@ -1,5 +1,6 @@
 from typing import Literal
 from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from openai import OpenAI
 
@@ -14,15 +15,14 @@ def home():
     return {"message": "It works!"}
 
 @app.post("/analyze")
-
+@app.post("/analyze", response_class=PlainTextResponse)
 async def analyze_css(file: UploadFile = File(...)):
     filename = file.filename or ""
     if not filename.endswith(".css"):
         raise HTTPException(status_code=400, detail="Please upload a CSS file.")
 
     contents = await file.read()
-    
-    
+
     try:
         css_text = contents.decode("utf-8")
     except UnicodeDecodeError:
@@ -30,13 +30,10 @@ async def analyze_css(file: UploadFile = File(...)):
 
     if not css_text.strip():
         raise HTTPException(status_code=400, detail="The CSS file is empty.")
-    
 
     analysis = analyze_with_llm(css_text)
-    return analysis
+    return annotate_css(analysis)   # ← returns the annotated CSS text
 
-
-    
         
     
     
@@ -49,28 +46,53 @@ class BootstrapSuggestion(BaseModel):
     explanation: str
 
 
+class PropertyMapping(BaseModel):
+    property: str          # e.g. "display: flex"
+    bootstrap_class: str | None   # e.g. "d-flex", or None if no equivalent
+    convertible: bool
+    note: str | None = None       # why it can't convert, if applicable
+
+class RuleAnalysis(BaseModel):
+    selector: str
+    properties: list[PropertyMapping]
+
 class CSSAnalysis(BaseModel):
+    rules: list[RuleAnalysis]
     convertible_percentage: int = Field(ge=0, le=100)
     overall_difficulty: Literal["easy", "medium", "hard"]
-    estimated_manual_minutes: int = Field(ge=0)
-    suggestions: list[BootstrapSuggestion]
-    custom_css_needed: list[str]
-    
-
 
 def analyze_with_llm(css_text: str) -> CSSAnalysis:
     try:
         completion = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are an expert front-end engineer."
-                 " Analyze the given CSS and suggest equivalent Bootstrap 5 utility classes. "
-                 "For each CSS rule, give the closest Bootstrap classes, rate match quality, give a confidence score, and explain."
-                 " Flag anything with no Bootstrap equivalent in custom_css_needed. Estimate overall convertibility."},
-                {"role": "user", "content": f"Analyze and convert this CSS:\n\n{css_text}"},
-            ],
+                    {"role": "system", "content": (
+                        "You are an expert front-end engineer. For the given CSS, analyze it "
+                        "property by property within each rule. For each individual property, "
+                        "provide the equivalent Bootstrap 5 utility class, or mark it as not "
+                        "convertible with a short note explaining why. Not every property has a "
+                        "Bootstrap equivalent — be accurate about which convert and which don't. "
+                        "Also estimate the overall convertible percentage and difficulty."
+                    )},
+                    {"role": "user", "content": f"Analyze and convert this CSS:\n\n{css_text}"},
+                ],
             response_format=CSSAnalysis,
         )
         return completion.choices[0].message.parsed
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI analysis failed: {str(e)}")
+    
+def annotate_css(analysis: CSSAnalysis) -> str:
+    lines = []
+    for rule in analysis.rules:
+        lines.append(f"{rule.selector} {{")
+        for prop in rule.properties:
+            if prop.convertible:
+                comment = f"/* ❌ Change to: {prop.bootstrap_class} */"
+            else:
+                reason = prop.note or "no Bootstrap equivalent"
+                comment = f"/* ✅ {reason} — keep as custom CSS */"
+            lines.append(f"    {prop.property};  {comment}")
+        lines.append("}")
+        lines.append("")  # blank line between rules
+    return "\n".join(lines)
