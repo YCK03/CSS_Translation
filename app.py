@@ -14,7 +14,7 @@ client = OpenAI()  # reads OPENAI_API_KEY from your environment
 def home():
     return {"message": "It works!"}
 
-@app.post("/analyze")
+
 @app.post("/analyze", response_class=PlainTextResponse)
 async def analyze_css(file: UploadFile = File(...)):
     filename = file.filename or ""
@@ -32,7 +32,7 @@ async def analyze_css(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="The CSS file is empty.")
 
     analysis = analyze_with_llm(css_text)
-    return annotate_css(analysis)   # ← returns the annotated CSS text
+    return annotate_css(analysis)   # annotate the CSS text
 
         
     
@@ -47,10 +47,10 @@ class BootstrapSuggestion(BaseModel):
 
 
 class PropertyMapping(BaseModel):
-    property: str          # e.g. "display: flex"
-    bootstrap_class: str | None   # e.g. "d-flex", or None if no equivalent
+    property: str          
+    bootstrap_class: str | None   
     convertible: bool
-    note: str | None = None       # why it can't convert, if applicable
+    note: str | None = None       
 
 class RuleAnalysis(BaseModel):
     selector: str
