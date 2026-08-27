@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from openai import OpenAI
 
 app = FastAPI()
-client = OpenAI()  # reads OPENAI_API_KEY from your environment
+client = OpenAI()
 
 
 
@@ -32,7 +32,7 @@ async def analyze_css(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="The CSS file is empty.")
 
     analysis = analyze_with_llm(css_text)
-    return annotate_css(analysis)   # annotate the CSS text
+    return annotate_css(analysis) 
 
         
     
@@ -88,11 +88,11 @@ def annotate_css(analysis: CSSAnalysis) -> str:
         lines.append(f"{rule.selector} {{")
         for prop in rule.properties:
             if prop.convertible:
-                comment = f"/* ❌ Change to: {prop.bootstrap_class} */"
+                comment = f"/* Change to: {prop.bootstrap_class} */"
             else:
                 reason = prop.note or "no Bootstrap equivalent"
-                comment = f"/* ✅ {reason} — keep as custom CSS */"
+                comment = f"/* {reason} — keep as custom CSS */"
             lines.append(f"    {prop.property};  {comment}")
         lines.append("}")
-        lines.append("")  # blank line between rules
+        lines.append("")  
     return "\n".join(lines)
